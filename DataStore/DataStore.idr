@@ -2,27 +2,36 @@ module Main
 
 import Data.Vect
 
-data DataStore : Type where
-    MkData : (size : Nat) -> (items : Vect size String) -> DataStore
+infixr 5 .+.
+data Schema = SInt
+            | SString
+            | (.+.) Schema Schema
 
-addToStore : (elem : String) -> (store : DataStore) -> DataStore
-addToStore elem (MkData size items) = MkData _ (items ++ [elem])
+SchemaType : Schema -> Type
+SchemaType SInt = Int
+SchemaType SString = String
+SchemaType (x .+. y) = (SchemaType x, SchemaType y)
 
-size : DataStore -> Nat
-size (MkData size items) = size
+record DataStore where
+       constructor MkData
+       dsSchema : Schema
+       dsSize : Nat
+       dsItems : Vect dsSize (SchemaType dsSchema)
 
-items : (store : DataStore) -> Vect (size store) String
-items (MkData size items) = items
+addToStore : (store : DataStore) -> (elem : SchemaType (dsSchema store)) -> DataStore
+addToStore (MkData dsSchema dsSize dsItems) elem = MkData dsSchema _ (dsItems ++ [elem])
 
-get : (store : DataStore) -> Fin (size store) -> String
-get store elemIndex = index elemIndex (items store)
+getFromStore : (store : DataStore) -> Fin (dsSize store) -> SchemaType (dsSchema store)
+getFromStore store i = index i (dsItems store)
 
-search : (store : DataStore) -> (predict : String -> Bool) -> (n ** Vect n String)
-search store predict =
-    let elems = items store
+searchInStore : (store : DataStore) ->
+                (predict : SchemaType (dsSchema store) -> Bool) ->
+                (let ElemType : Type = (Nat, SchemaType (dsSchema store)) in
+                    (n ** Vect n ElemType))
+searchInStore store predict =
+    let elems = dsItems store
         vect = zipWithIndex elems in
-        case filter (\pair => predict (snd pair)) vect of
-            (x ** pf) => (x ** map (\pair => show (fst pair) ++ ": " ++ snd pair) pf)
+        filter (\pair => predict (snd pair)) vect
     where internalZip : Nat -> Vect n ty -> Vect n (Nat, ty)
           internalZip k [] = []
           internalZip k (x :: xs) = (k, x) :: internalZip (S k) xs
@@ -30,30 +39,36 @@ search store predict =
           zipWithIndex : Vect n ty -> Vect n (Nat, ty)
           zipWithIndex = internalZip 0
 
-data Command = CmdAdd String
-             | CmdGet Nat
-             | CmdSize
-             | CmdSearch String
-             | CmdQuit
+data Command : Schema -> Type where
+     CmdAdd : SchemaType schema -> Command schema
+     CmdGet : Nat -> Command schema
+     CmdSize : Command schema
+     CmdSearch : String -> Command schema
+     CmdQuit : Command schema
 
-parseCommmand : String -> Maybe Command
-parseCommmand input =
-    let (command, originArg) = span (/= ' ') input
-        arg = ltrim originArg in
-        internalParse command arg
-    where internalParse : String -> String -> Maybe Command
-          internalParse "add" arg = Just (CmdAdd arg)
-          internalParse "get" arg = case all isDigit (unpack arg) of
-                                         False => Nothing
-                                         True => Just (CmdGet (cast arg))
-          internalParse "size" arg = Just CmdSize
-          internalParse "search" arg = Just (CmdSearch arg)
-          internalParse "quit" arg = Just CmdQuit
-          internalParse cmd arg = Nothing
+parseBySchema : (schema : Schema) -> (arg : String) -> Maybe (SchemaType schema)
+parseBySchema SInt arg = ?parseBySchema_rhs_1
+parseBySchema SString arg = ?parseBySchema_rhs_2
+parseBySchema (x .+. y) arg = ?parseBySchema_rhs_3
 
+parseCommand : (schema : Schema) -> (command : String) -> (args : String) -> Maybe (Command schema)
+parseCommand schema "add" arg = map CmdAdd (parseBySchema schema arg)
+parseCommand schema "get" arg = case all isDigit (unpack arg) of
+                                     False => Nothing
+                                     True => Just (CmdGet (cast arg))
+parseCommand schema "size" arg = Just CmdSize
+parseCommand schema "search" arg = Just (CmdSearch arg)
+parseCommand schema "quit" arg = Just CmdQuit
+parseCommand schema cmd arg = Nothing
+
+parseInput : (schema : Schema) -> (input : String) -> Maybe (Command schema)
+parseInput schema input = let (command, args) = span (/= ' ') input in
+                              parseCommand schema command args
+
+{-
 processCommand : (cmd : Command) -> (store : DataStore) -> Maybe (String, DataStore)
 processCommand (CmdAdd elem) store =
-    let newStore = addToStore elem store
+    let newStore = addToStore store elem
         index = size store in
         Just ("Add success, index " ++ show index ++ "\n", newStore)
 processCommand (CmdGet elemIndex) store =
@@ -81,3 +96,4 @@ processInput store input =
 
 main : IO ()
 main = replWith (MkData _ []) "Command: " processInput
+-}
