@@ -12,6 +12,11 @@ SchemaType SInt = Int
 SchemaType SString = String
 SchemaType (x .+. y) = (SchemaType x, SchemaType y)
 
+showElem : SchemaType schema -> String
+showElem {schema = SInt} elem = show elem
+showElem {schema = SString} elem = elem
+showElem {schema = (x .+. y)} (a, b) = showElem a ++ " " ++ showElem b
+
 record DataStore where
        constructor MkData
        dsSchema : Schema
@@ -43,57 +48,74 @@ data Command : Schema -> Type where
      CmdAdd : SchemaType schema -> Command schema
      CmdGet : Nat -> Command schema
      CmdSize : Command schema
-     CmdSearch : String -> Command schema
+     CmdSchema : (newSchema : Schema) -> Command schema
      CmdQuit : Command schema
 
 parseBySchema : (schema : Schema) -> (arg : String) -> Maybe (SchemaType schema)
-parseBySchema SInt arg = ?parseBySchema_rhs_1
-parseBySchema SString arg = ?parseBySchema_rhs_2
-parseBySchema (x .+. y) arg = ?parseBySchema_rhs_3
+parseBySchema _ "" = Nothing
+parseBySchema SInt arg = if all isDigit (unpack arg)
+                         then Just (cast arg)
+                         else Nothing
+parseBySchema SString arg = Just arg
+parseBySchema (schema0 .+. schema1) arg =
+    let (first, rest) = span (/= ' ') arg in
+        do elem0 <- parseBySchema schema0 first
+           elem1 <- parseBySchema schema1 (ltrim rest)
+           pure (elem0, elem1)
+
+parseBuiltinSchema : String -> Maybe Schema
+parseBuiltinSchema "Int" = Just SInt
+parseBuiltinSchema "String" = Just SString
+parseBuiltinSchema x = Nothing
+
+parseSchema : (args : List String) -> Maybe Schema
+parseSchema [] = Nothing
+parseSchema (x :: []) = parseBuiltinSchema x
+parseSchema (x :: xs) = do s0 <- parseBuiltinSchema x
+                           s1 <- parseSchema xs
+                           pure (s0 .+. s1)
 
 parseCommand : (schema : Schema) -> (command : String) -> (args : String) -> Maybe (Command schema)
-parseCommand schema "add" arg = map CmdAdd (parseBySchema schema arg)
-parseCommand schema "get" arg = case all isDigit (unpack arg) of
+parseCommand schema "add" args = map CmdAdd (parseBySchema schema args)
+parseCommand schema "get" args = case all isDigit (unpack args) of
                                      False => Nothing
-                                     True => Just (CmdGet (cast arg))
-parseCommand schema "size" arg = Just CmdSize
-parseCommand schema "search" arg = Just (CmdSearch arg)
-parseCommand schema "quit" arg = Just CmdQuit
-parseCommand schema cmd arg = Nothing
+                                     True => Just (CmdGet (cast args))
+parseCommand schema "size" args = Just CmdSize
+parseCommand schema "quit" args = Just CmdQuit
+parseCommand schema "schema" args = let argList = split (== ' ') args in
+                                        map CmdSchema (parseSchema argList)
+parseCommand schema cmd args = Nothing
 
 parseInput : (schema : Schema) -> (input : String) -> Maybe (Command schema)
 parseInput schema input = let (command, args) = span (/= ' ') input in
-                              parseCommand schema command args
+                              parseCommand schema command (ltrim args)
 
-{-
-processCommand : (cmd : Command) -> (store : DataStore) -> Maybe (String, DataStore)
-processCommand (CmdAdd elem) store =
+processCommand : (store : DataStore) ->
+                 (cmd : Command (dsSchema store)) ->
+                 Maybe (String, DataStore)
+processCommand store (CmdAdd elem) =
     let newStore = addToStore store elem
-        index = size store in
+        index = dsSize store in
         Just ("Add success, index " ++ show index ++ "\n", newStore)
-processCommand (CmdGet elemIndex) store =
-    case natToFin elemIndex (size store) of
+processCommand store (CmdGet elemIndex) =
+    case natToFin elemIndex (dsSize store) of
         Nothing =>
             Just ("Index " ++ show elemIndex ++ " is greater equal than store size " ++
-                    show (size store) ++ "\n",
+                    show (dsSize store) ++ "\n",
                     store)
-        Just x => Just (get store x ++ "\n", store)
-processCommand CmdSize store = Just (show (size store) ++ "\n", store)
-processCommand (CmdSearch prefix) store =
-    case search store (isPrefixOf prefix) of
-         (Z ** []) => Just ("No data found\n", store)
-         (n ** vs) => Just ("Get " ++ show n ++ " results:\n" ++ showElems vs, store)
-    where showElems : Vect n String -> String
-          showElems [] = ""
-          showElems (x :: xs) = x ++ "\n" ++ showElems xs
-processCommand CmdQuit store = Nothing
+        Just x => Just (showElem (getFromStore store x) ++ "\n", store)
+processCommand store CmdSize = Just (show (dsSize store) ++ "\n", store)
+processCommand store (CmdSchema newSchema) =
+    if dsSize store == 0
+    then Just ("Set schema done\n", MkData newSchema _ [])
+    else Just ("Data store not empty, cannot change schema\n", store)
+processCommand store CmdQuit = Nothing
 
 processInput : DataStore -> String -> Maybe (String, DataStore)
 processInput store input =
-    case parseCommmand input of
+    case parseInput (dsSchema store) input of
         Nothing => Just ("Invalid command\n", store)
-        Just cmd => processCommand cmd store
+        Just cmd => processCommand store cmd
 
 main : IO ()
-main = replWith (MkData _ []) "Command: " processInput
--}
+main = replWith (MkData SString _ []) "Command: " processInput
