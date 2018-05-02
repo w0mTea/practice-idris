@@ -5,14 +5,15 @@ module Proofs.Nat
 
 
 ||| n0 <= n1 -> n0 + c <= n1 + c
-plusConstantRightLTE : (p : LTE n0 n1) -> (c : Nat) ->
+ltePlusConstantRight : (c : Nat) ->
+                       (p : LTE n0 n1) ->
                        LTE (n0 + c) (n1 + c)
-plusConstantRightLTE {n0} {n1} p Z =
+ltePlusConstantRight {n0} {n1} Z p =
   rewrite plusZeroRightNeutral n0 in
   rewrite plusZeroRightNeutral n1 in
   p
-plusConstantRightLTE {n0} {n1} p (S k) =
-  let hypothesis = plusConstantRightLTE p k in
+ltePlusConstantRight {n0} {n1} (S k) p =
+  let hypothesis = ltePlusConstantRight k p in
   rewrite plusLemma1 n0 k in
   rewrite plusLemma1 n1 k in
   LTESucc hypothesis
@@ -21,3 +22,35 @@ plusConstantRightLTE {n0} {n1} p (S k) =
         plusLemma1 (S j) k = let hypothesis = plusLemma1 j k in
                           rewrite hypothesis in
                           Refl
+
+
+||| n0 <= n1 -> c + n0 <= c + n1
+ltePlusConstantLeft : (c : Nat) ->
+                      (p : LTE n0 n1) ->
+                      LTE (c + n0) (c + n1)
+ltePlusConstantLeft {n0} {n1} c p =
+  rewrite plusCommutative c n0 in
+  rewrite plusCommutative c n1 in
+  ltePlusConstantRight c p
+
+
+||| n0 <= n1 -> n0 <= n1 + c
+lteAddNatRight : (c : Nat) -> (p : LTE n0 n1) ->
+                 LTE n0 (n1 + c)
+lteAddNatRight {n0} {n1} c p =
+  let goal0 = the (LTE n1 (n1 + c)) (lteAddRight n1) in
+  lteTransitive p goal0
+
+
+||| n0 <= n1, k0 <= k1 -> n0 + k0 <= n1 + k1
+ltePlusNatRight : (p0 : LTE n0 n1) ->
+                  (p1 : LTE k0 k1) ->
+                  LTE (n0 + k0) (n1 + k1)
+ltePlusNatRight {n0 = n0} {n1 = n1} {k0 = Z} {k1 = k1} p0 p1 =
+  rewrite plusZeroRightNeutral n0 in
+  lteAddNatRight k1 p0
+ltePlusNatRight {n0 = n0} {n1 = n1} {k0 = (S kk0)} {k1 = (S kk1)} p0 (LTESucc p3) =
+  let idh = ltePlusNatRight p0 p3 in
+  rewrite sym (plusSuccRightSucc n0 kk0) in
+  rewrite sym (plusSuccRightSucc n1 kk1) in
+  LTESucc idh
