@@ -1,5 +1,7 @@
 module FingerTree
 
+import Data.Vect
+
 %default total
 
 data Node a = Node2 a a | Node3 a a a
@@ -26,6 +28,20 @@ namespace Digit
   toList (Two x y) = [x, y]
   toList (Three x y z) = [x, y, z]
   toList (Four x y z w) = [x, y, z, w]
+
+
+  length : Digit a -> Nat
+  length (One _) = 1
+  length (Two _ _) = 2
+  length (Three _ _ _) = 3
+  length (Four _ _ _ _) = 4
+  
+  
+  toVect : (d : Digit a) -> Vect (length d) a
+  toVect (One x) = [x]
+  toVect (Two x y) = [x, y]
+  toVect (Three x y z) = [x, y, z]
+  toVect (Four x y z w) = [x, y, z, w]
 
 
   head : Digit a -> a
@@ -167,3 +183,47 @@ namespace ViewR
   tailR : FingerTree a -> FingerTree a
   tailR tree = case viewR tree of
                  (_ :: tree') => tree'
+
+
+nodes : Vect n a -> {auto prf : n `GTE` 2} -> List (Node a)
+nodes [_] {prf = (LTESucc LTEZero)} impossible
+nodes [_] {prf = (LTESucc (LTESucc _))} impossible
+nodes [x, y] {prf = (LTESucc (LTESucc LTEZero))} = [Node2 x y]
+nodes [x, y, z] {prf = (LTESucc (LTESucc LTEZero))} = [Node3 x y z]
+nodes [x, y, z, w] {prf = (LTESucc (LTESucc LTEZero))} = [Node2 x y, Node2 z w]
+nodes (x :: (y :: (z :: (w :: (s :: xs))))) {prf = (LTESucc (LTESucc LTEZero))} =
+  Node3 x y z :: nodes (w :: (s :: xs))
+
+
+plusGTE : (l0 : Nat) -> (n0 : Nat) -> {auto p0 : l0 `GTE` n0} ->
+          (l1 : Nat) -> (n1 : Nat) -> {auto p1 : l1 `GTE` n1} ->
+          l0 + l1 `GTE` n0 + n1
+plusGTE l0 n0 {p0} l1 n1 {p1} = ?plusGTE_rhs
+
+
+onePlusOnePlusNatGTETwo : (l0 : Nat) -> {auto p0 : l0 `GTE` 1} ->
+                          (l1 : Nat) -> {auto p1 : l1 `GTE` 1} ->
+                          (l2 : Nat) ->
+                          l2 + (l0 + l1) `GTE` 2
+onePlusOnePlusNatGTETwo (S k0) {p0 = (LTESucc x)} (S k1) {p1 = (LTESucc y)} l2 = ?asdfasdf_rhs
+  
+
+
+conc : FingerTree a -> List a -> FingerTree a -> FingerTree a
+conc Empty elems tree1 = foldl (flip (<|)) tree1 elems
+conc (Single x) elems tree1 = x <| foldl (flip (<|)) tree1 elems
+conc tree0 elems Empty = foldl (|>) tree0 elems
+conc tree0 elems (Single x) = (foldl (|>) tree0 elems) |> x
+conc (Deep ld0 st0 rd0) elems (Deep ld1 st1 rd1) =
+  let l0 = toVect rd0
+      ll0 = length l0
+      l1 = toVect ld1
+      ll1 = length l1
+      le = Data.Vect.fromList elems
+      l = le ++ l0 ++ l1
+  in  ?conc_rhs
+      --Deep ld0 (conc st0 (nodes l) st1) rd1
+
+
+(++) : FingerTree a -> FingerTree a -> FingerTree a
+(++) x y = conc x [] y
