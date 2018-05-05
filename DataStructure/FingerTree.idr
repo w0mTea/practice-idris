@@ -2,28 +2,47 @@ module DataStructure.FingerTree
 
 import Data.Vect
 import Proofs.Nat
+import DataStructure.Measured
 
 %default total
 %access export
 
 
 public export
-data Node a = Node2 a a | Node3 a a a
+data Node v a = Node2 v a a | Node3 v a a a
+
+
+(Monoid v) => Measured (Node v a) v where
+  measure (Node2 v _ _) = v
+  measure (Node3 v _ _ _) = v
 
 
 public export
 data Digit a = One a | Two a a | Three a a a | Four a a a a
 
 
+(Measured a v) => Measured (Digit a) v where
+  measure (One x) = measure x
+  measure (Two x y) = measure x <+> measure y
+  measure (Three x y z) = measure x <+> measure y <+> measure z
+  measure (Four x y z w) = measure x <+> measure y <+> measure z <+> measure w
+
+
 public export
-data FingerTree a = Empty
-                  | Single a
-                  | Deep (Digit a) (FingerTree (Node a)) (Digit a)
+data FingerTree v a = Empty
+                    | Single a
+                    | Deep (Digit a) (FingerTree v (Node v a)) (Digit a)
+
+
+(Measured a v) => Measured (FingerTree v a) v where
+  measure Empty = neutral
+  measure (Single x) = measure x
+  measure (Deep ld subtree rd) = measure ld <+> measure subtree <+> measure rd
 
 
 ||| Satisfiable if the finger tree is non-empty
 public export
-data NonEmpty : FingerTree a -> Type where
+data NonEmpty : FingerTree v a -> Type where
      IsSingle : NonEmpty (Single x)
      IsDeep : NonEmpty (Deep ld subtree rd)
 
@@ -32,7 +51,7 @@ Uninhabited (NonEmpty Empty) where
   uninhabited IsSingle impossible
   uninhabited IsDeep impossible
 
-
+{-
 namespace Digit
   ||| Convert a digit into a finger tree
   toTree : Digit a -> FingerTree a
@@ -288,3 +307,5 @@ conc (Deep ld0 st0 rd0) elems (Deep ld1 st1 rd1) =
 ||| Concatenate two finger trees
 (++) : FingerTree a -> FingerTree a -> FingerTree a
 (++) x y = conc x [] y
+
+-}
