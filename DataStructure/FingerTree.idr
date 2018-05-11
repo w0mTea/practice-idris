@@ -191,28 +191,27 @@ infixr 5 <|
 (<|) x (Deep _ ld@(Three _ _ _) subtree digit) = deep (cons x ld) subtree digit
 
 
-{-
 infixl 5 |>
 ||| Push an element into the back of a finger tree
-(|>) : FingerTree a -> a -> FingerTree a
+(|>) : (Measured a v) => FingerTree v a -> a -> FingerTree v a
 (|>) Empty x = Single x
-(|>) (Single y) x = Deep (One y) Empty (One x)
-(|>) (Deep digit subtree (One y)) x = Deep digit subtree (Two y x)
-(|>) (Deep digit subtree (Two y z)) x = Deep digit subtree (Three y z x)
-(|>) (Deep digit subtree (Three y z w)) x = Deep digit subtree (Four y z w x)
-(|>) (Deep digit subtree (Four y z w s)) x = Deep digit (subtree |> (Node3 y z w)) (Two s x)
+(|>) (Single y) x = deep (One y) Empty (One x)
+(|>) (Deep _ digit subtree rd@(One _)) x = deep digit subtree (append rd x)
+(|>) (Deep _ digit subtree rd@(Two _ _)) x = deep digit subtree (append rd x)
+(|>) (Deep _ digit subtree rd@(Three _ _ _)) x = deep digit subtree (append rd x)
+(|>) (Deep _ digit subtree (Four y z w s)) x = deep digit (subtree |> (node3 y z w)) (Two s x)
 
 
 ||| Convert a list into a finger tree
-fromList : List a -> FingerTree a
+fromList : (Measured a v) => List a -> FingerTree v a
 fromList = foldl (|>) Empty
 
 
 ||| Convert a finger tree into a list
-toList : FingerTree a -> List a
+toList : FingerTree v a -> List a
 toList Empty = []
 toList (Single x) = [x]
-toList (Deep ldigit subtree rdigit) =
+toList (Deep _ ldigit subtree rdigit) =
   let lList = toList ldigit
       rList = toList rdigit
       mList = do node <- toList subtree
@@ -233,20 +232,20 @@ namespace ViewL
   mutual
     ||| Remove the first element of the leftmost digit
     private
-    deepL : Digit a -> FingerTree (Node a) -> Digit a -> FingerTree a
+    deepL : (Measured a v) => Digit a -> FingerTree v (Node v a) -> Digit a -> FingerTree v a
     deepL (One _) subtree rdigit = case viewL subtree of
                                         [] => toTree rdigit
-                                        (node :: subtree') => Deep (toDigit node) subtree' rdigit
-    deepL (Two _ y) subtree rdigit = Deep (One y) subtree rdigit
-    deepL (Three _ y z) subtree rdigit = Deep (Two y z) subtree rdigit
-    deepL (Four _ y z w) subtree rdigit = Deep (Three y z w) subtree rdigit
+                                        (node :: subtree') => deep (toDigit node) subtree' rdigit
+    deepL (Two _ y) subtree rdigit = deep (One y) subtree rdigit
+    deepL (Three _ y z) subtree rdigit = deep (Two y z) subtree rdigit
+    deepL (Four _ y z w) subtree rdigit = deep (Three y z w) subtree rdigit
 
 
     ||| Create a view to iterate a finger tree from left to right
-    viewL : FingerTree a -> ViewL FingerTree a
+    viewL : (Measured a v) => FingerTree v a -> ViewL (FingerTree v) a
     viewL Empty = []
     viewL (Single x) = x :: Empty
-    viewL (Deep ldigit subtree rdigit) = head ldigit :: deepL ldigit subtree rdigit
+    viewL (Deep _ ldigit subtree rdigit) = head ldigit :: deepL ldigit subtree rdigit
 
 
 namespace ViewR
@@ -262,65 +261,65 @@ namespace ViewR
   mutual
     ||| Remove the first element of the rightmost digit
     private
-    deepR : Digit a -> FingerTree (Node a) -> Digit a -> FingerTree a
+    deepR : (Measured a v) => Digit a -> FingerTree v (Node v a) -> Digit a -> FingerTree v a
     deepR ldigit subtree (One _) = case viewR subtree of
                                         [] => toTree ldigit
-                                        (node :: subtree') => Deep ldigit subtree' (toDigit node)
-    deepR ldigit subtree (Two x _) = Deep ldigit subtree (One x)
-    deepR ldigit subtree (Three x y _) = Deep ldigit subtree (Two x y)
-    deepR ldigit subtree (Four x y z _) = Deep ldigit subtree (Three x y z)
+                                        (node :: subtree') => deep ldigit subtree' (toDigit node)
+    deepR ldigit subtree (Two x _) = deep ldigit subtree (One x)
+    deepR ldigit subtree (Three x y _) = deep ldigit subtree (Two x y)
+    deepR ldigit subtree (Four x y z _) = deep ldigit subtree (Three x y z)
 
 
     ||| Create a view to iterate a finger tree from right to left
-    viewR : FingerTree a -> ViewR FingerTree a
+    viewR : (Measured a v) => FingerTree v a -> ViewR (FingerTree v) a
     viewR Empty = []
     viewR (Single x) = x :: Empty
-    viewR (Deep ldigit subtree rdigit) = last rdigit :: deepR ldigit subtree rdigit
+    viewR (Deep _ ldigit subtree rdigit) = last rdigit :: deepR ldigit subtree rdigit
 
 
 ||| Get the first element of a non-empty finger tree
 ||| @ prf proof that the finger tree in non-empty
-head : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> a
+head : (tree : FingerTree v a) -> {auto prf : FingerTreeIsNonEmpty tree} -> a
 head Empty {prf} impossible
 head (Single x) {prf = IsSingle} = x
-head (Deep ld subtree rd) {prf = IsDeep} = head ld
+head (Deep _ ld subtree rd) {prf = IsDeep} = head ld
 
 
 ||| Get the tail of a non-empty finger tree
 ||| @ prf proof that the finger tree in non-empty
-tail : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> FingerTree a
+tail : (Measured a v) => (tree : FingerTree v a) -> {auto prf : FingerTreeIsNonEmpty tree} -> FingerTree v a
 tail Empty {prf} impossible
 tail (Single x) {prf = IsSingle} = Empty
-tail (Deep ld subtree rd) {prf = IsDeep} = deepL ld subtree rd
+tail (Deep _ ld subtree rd) {prf = IsDeep} = deepL ld subtree rd
 
 
 ||| Get the last element of a non-empty finger tree
 ||| @ prf proof that the finger tree in non-empty
-last : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> a
+last : (tree : FingerTree v a) -> {auto prf : FingerTreeIsNonEmpty tree} -> a
 last Empty {prf} impossible
 last (Single x) {prf = IsSingle} = x
-last (Deep ld subtree rd) {prf = IsDeep} = last rd
+last (Deep _ ld subtree rd) {prf = IsDeep} = last rd
 
 
 ||| Return all but the last element of a non-empty finger tree
 ||| @ prf proof that the finger tree is non-empty
-init : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> FingerTree a
+init : (Measured a v) => (tree : FingerTree v a) -> {auto prf : FingerTreeIsNonEmpty tree} -> FingerTree v a
 init Empty {prf} impossible
 init (Single x) {prf = IsSingle} = Empty
-init (Deep ld subtree rd) {prf = IsDeep} = deepR ld subtree rd
+init (Deep _ ld subtree rd) {prf = IsDeep} = deepR ld subtree rd
 
 
 ||| Split a vect of elements into a list of nodes
 ||| @prf proof that the vector has at least 2 elements
 private
-nodes : Vect n a -> {auto prf : n `GTE` 2} -> List (Node a)
+nodes : (Measured a v) => Vect n a -> {auto prf : n `GTE` 2} -> List (Node v a)
 nodes [_] {prf = (LTESucc LTEZero)} impossible
 nodes [_] {prf = (LTESucc (LTESucc _))} impossible
-nodes [x, y] {prf = (LTESucc (LTESucc LTEZero))} = [Node2 x y]
-nodes [x, y, z] {prf = (LTESucc (LTESucc LTEZero))} = [Node3 x y z]
-nodes [x, y, z, w] {prf = (LTESucc (LTESucc LTEZero))} = [Node2 x y, Node2 z w]
+nodes [x, y] {prf = (LTESucc (LTESucc LTEZero))} = [node2 x y]
+nodes [x, y, z] {prf = (LTESucc (LTESucc LTEZero))} = [node3 x y z]
+nodes [x, y, z, w] {prf = (LTESucc (LTESucc LTEZero))} = [node2 x y, node2 z w]
 nodes (x :: (y :: (z :: (w :: (s :: xs))))) {prf = (LTESucc (LTESucc LTEZero))} =
-  Node3 x y z :: nodes (w :: (s :: xs))
+  node3 x y z :: nodes (w :: (s :: xs))
 
 
 ||| Prove that the concatenated vect has at least two elements
@@ -334,24 +333,23 @@ lengthIsGTE2 {len} rd0 ld1 vect =
       p21 = ltePlusNatRight p2 p1
   in  ltePlusNatRight p0 p21
 
+
 ||| Combine two finger tree and a list of elements into a new finger tree
 private
-conc : FingerTree a -> List a -> FingerTree a -> FingerTree a
+conc : (Measured a v) => FingerTree v a -> List a -> FingerTree v a -> FingerTree v a
 conc Empty elems tree1 = foldr (<|) tree1 elems
 conc (Single x) elems tree1 = x <| (foldr (<|) tree1 elems)
 conc tree0 elems Empty = foldl (|>) tree0 elems
 conc tree0 elems (Single x) = (foldl (|>) tree0 elems) |> x
-conc (Deep ld0 st0 rd0) elems (Deep ld1 st1 rd1) =
+conc (Deep _ ld0 st0 rd0) elems (Deep _ ld1 st1 rd1) =
   let list0 = toVect rd0
       list1 = toVect ld1
       listE = Data.Vect.fromList elems
       l = list0 ++ listE ++ list1
       prf = lengthIsGTE2 rd0 ld1 listE
-  in  Deep ld0 (conc st0 (nodes l) st1) rd1
+  in  deep ld0 (conc st0 (nodes l) st1) rd1
 
 
 ||| Concatenate two finger trees
-(++) : FingerTree a -> FingerTree a -> FingerTree a
+(++) : (Measured a v) => FingerTree v a -> FingerTree v a -> FingerTree v a
 (++) x y = conc x [] y
-
--}
