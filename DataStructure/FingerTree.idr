@@ -12,9 +12,19 @@ public export
 data Node v a = Node2 v a a | Node3 v a a a
 
 
-(Monoid v) => Measured (Node v a) v where
+(Measured a v) => Measured (Node v a) v where
   measure (Node2 v _ _) = v
   measure (Node3 v _ _ _) = v
+
+
+||| Calculate measurement and create a Node2 node
+node2 : (Measured a v) => a -> a -> Node v a
+node2 x y = Node2 (measure x <+> measure y) x y
+
+
+||| Calculate measurement and create a Node3 node
+node3 : (Measured a v) => a -> a -> a -> Node v a
+node3 x y z = Node3 (measure x <+> measure y <+> measure z) x y z
 
 
 public export
@@ -28,37 +38,56 @@ data Digit a = One a | Two a a | Three a a a | Four a a a a
   measure (Four x y z w) = measure x <+> measure y <+> measure z <+> measure w
 
 
+||| Satisfiable if the digit is not full
+public export
+data DigitIsNotFull : Digit a -> Type where
+  IsOne : DigitIsNotFull (One _)
+  IsTwo : DigitIsNotFull (Two _ _)
+  IsThree : DigitIsNotFull (Three _ _ _)
+
+
+Uninhabited (DigitIsNotFull (Four _ _ _ _)) where
+  uninhabited IsOne impossible
+  uninhabited IsTwo impossible
+  uninhabited IsThree impossible
+
+
 public export
 data FingerTree v a = Empty
                     | Single a
-                    | Deep (Digit a) (FingerTree v (Node v a)) (Digit a)
+                    | Deep v (Digit a) (FingerTree v (Node v a)) (Digit a)
 
 
 (Measured a v) => Measured (FingerTree v a) v where
   measure Empty = neutral
   measure (Single x) = measure x
-  measure (Deep ld subtree rd) = measure ld <+> measure subtree <+> measure rd
+  measure (Deep v ld subtree rd) = v
+
+
+||| Calculate measurement and create a deep finger tree
+deep : (Measured a v) => Digit a -> FingerTree v (Node v a) -> Digit a -> FingerTree v a
+deep ld subtree rd = Deep (measure ld <+> measure subtree <+> measure rd) ld subtree rd
 
 
 ||| Satisfiable if the finger tree is non-empty
 public export
-data NonEmpty : FingerTree v a -> Type where
-     IsSingle : NonEmpty (Single x)
-     IsDeep : NonEmpty (Deep ld subtree rd)
+data FingerTreeIsNonEmpty : FingerTree v a -> Type where
+     IsSingle : FingerTreeIsNonEmpty (Single x)
+     IsDeep : FingerTreeIsNonEmpty (Deep v ld subtree rd)
 
 
-Uninhabited (NonEmpty Empty) where
+Uninhabited (FingerTreeIsNonEmpty Empty) where
   uninhabited IsSingle impossible
   uninhabited IsDeep impossible
 
-{-
+
 namespace Digit
   ||| Convert a digit into a finger tree
-  toTree : Digit a -> FingerTree a
+  toTree : (Measured a v) => Digit a -> FingerTree v a
   toTree (One x) = Single x
-  toTree (Two x y) = Deep (One x) Empty (One y)
-  toTree (Three x y z) = Deep (Two x y) Empty (One z)
-  toTree (Four x y z w) = Deep (Two x y) Empty (Two z w)
+  toTree (Two x y) = Deep (measure x <+> measure y) (One x) Empty (One y)
+  toTree (Three x y z) = Deep (measure x <+> measure y <+> measure z) (Two x y) Empty (One z)
+  toTree (Four x y z w) = Deep (measure x <+> measure y <+> measure z <+> measure w) (Two x y) Empty (Two z w)
 
 
   ||| Convert a digit into a list
@@ -85,7 +114,7 @@ namespace Digit
   toVect (Four x y z w) = [x, y, z, w]
 
 
-  ||| A digit contains at least one element
+  ||| Proof that a digit contains at least one element
   public export
   digitHasAtLeastOneElem : (d : Digit a) -> ((S Z) `LTE` length d)
   digitHasAtLeastOneElem (One x) = LTESucc LTEZero
@@ -110,42 +139,59 @@ namespace Digit
   last (Four x y z w) = w
 
 
+  ||| Append an element into a digit
+  ||| @ prf proof that the digit is not full
+  append : (d : Digit a) -> a -> {auto prf : DigitIsNotFull d} -> Digit a
+  append (One y) x {prf = IsOne} = Two y x
+  append (Two y z) x {prf = IsTwo} = Three y z x
+  append (Three y z w) x {prf = IsThree} = Four y z w x
+
+
+  ||| Add an element into the front of digit
+  ||| @ prf proof that the digit is not full
+  cons : (x : a) -> (d : Digit a) -> {auto prf : DigitIsNotFull d} -> Digit a
+  cons x (One y) {prf = IsOne} = Two x y
+  cons x (Two y z) {prf = IsTwo} = Three x y z
+  cons x (Three y z w) {prf = IsThree} = Four x y z w
+
+
 namespace Node
   ||| Convert a node into a digit
-  toDigit : Node a -> Digit a
-  toDigit (Node2 x y) = Two x y
-  toDigit (Node3 x y z) = Three x y z
+  toDigit : Node v a -> Digit a
+  toDigit (Node2 _ x y) = Two x y
+  toDigit (Node3 _ x y z) = Three x y z
 
 
   ||| Convert a node into a list
-  toList : Node a -> List a
-  toList (Node2 x y) = [x, y]
-  toList (Node3 x y z) = [x, y, z]
+  toList : Node v a -> List a
+  toList (Node2 _ x y) = [x, y]
+  toList (Node3 _ x y z) = [x, y, z]
 
 
   ||| Get the first element of the node
-  head : Node a -> a
-  head (Node2 x y) = x
-  head (Node3 x y z) = x
+  head : Node v a -> a
+  head (Node2 _ x y) = x
+  head (Node3 _ x y z) = x
 
 
   ||| Get the last element of the node
-  last : Node a -> a
-  last (Node2 x y) = y
-  last (Node3 x y z) = z
+  last : Node v a -> a
+  last (Node2 _ x y) = y
+  last (Node3 _ x y z) = z
 
 
 infixr 5 <|
 ||| Push an element into the front of a finger tree
-(<|) : a -> FingerTree a -> FingerTree a
+(<|) : (Measured a v) => a -> FingerTree v a -> FingerTree v a
 (<|) x Empty = Single x
-(<|) x (Single y) = Deep (One x) Empty (One y)
-(<|) x (Deep (One y) subtree digit) = Deep (Two x y) subtree digit
-(<|) x (Deep (Two y z) subtree digit) = Deep (Three x y z) subtree digit
-(<|) x (Deep (Three y z w) subtree digit) = Deep (Four x y z w) subtree digit
-(<|) x (Deep (Four y z w s) subtree digit) = Deep (Two x y) ((Node3 z w s) <| subtree) digit
+(<|) x (Single y) = deep (One x) Empty (One y)
+(<|) x (Deep _ (Four y z w s) subtree digit) = deep (Two x y) ((node3 z w s) <| subtree) digit
+(<|) x (Deep _ ld@(One _) subtree digit) = deep (cons x ld) subtree digit
+(<|) x (Deep _ ld@(Two _ _) subtree digit) = deep (cons x ld) subtree digit
+(<|) x (Deep _ ld@(Three _ _ _) subtree digit) = deep (cons x ld) subtree digit
 
 
+{-
 infixl 5 |>
 ||| Push an element into the back of a finger tree
 (|>) : FingerTree a -> a -> FingerTree a
@@ -234,7 +280,7 @@ namespace ViewR
 
 ||| Get the first element of a non-empty finger tree
 ||| @ prf proof that the finger tree in non-empty
-head : (tree : FingerTree a) -> {auto prf : NonEmpty tree} -> a
+head : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> a
 head Empty {prf} impossible
 head (Single x) {prf = IsSingle} = x
 head (Deep ld subtree rd) {prf = IsDeep} = head ld
@@ -242,7 +288,7 @@ head (Deep ld subtree rd) {prf = IsDeep} = head ld
 
 ||| Get the tail of a non-empty finger tree
 ||| @ prf proof that the finger tree in non-empty
-tail : (tree : FingerTree a) -> {auto prf : NonEmpty tree} -> FingerTree a
+tail : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> FingerTree a
 tail Empty {prf} impossible
 tail (Single x) {prf = IsSingle} = Empty
 tail (Deep ld subtree rd) {prf = IsDeep} = deepL ld subtree rd
@@ -250,7 +296,7 @@ tail (Deep ld subtree rd) {prf = IsDeep} = deepL ld subtree rd
 
 ||| Get the last element of a non-empty finger tree
 ||| @ prf proof that the finger tree in non-empty
-last : (tree : FingerTree a) -> {auto prf : NonEmpty tree} -> a
+last : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> a
 last Empty {prf} impossible
 last (Single x) {prf = IsSingle} = x
 last (Deep ld subtree rd) {prf = IsDeep} = last rd
@@ -258,7 +304,7 @@ last (Deep ld subtree rd) {prf = IsDeep} = last rd
 
 ||| Return all but the last element of a non-empty finger tree
 ||| @ prf proof that the finger tree is non-empty
-init : (tree : FingerTree a) -> {auto prf : NonEmpty tree} -> FingerTree a
+init : (tree : FingerTree a) -> {auto prf : FingerTreeIsNonEmpty tree} -> FingerTree a
 init Empty {prf} impossible
 init (Single x) {prf = IsSingle} = Empty
 init (Deep ld subtree rd) {prf = IsDeep} = deepR ld subtree rd
